@@ -1,0 +1,51 @@
+00 10  *  * *  /home/observer/questops.dir/questops/bin/log_pressure
+00 09 *  * *  /home/observer/bin/daily_checkout
+00 14 * * * /home/observer/palomar/bin/update_filter_log
+#
+# QUEST/NEAT point & shoot    
+#
+# QUEST PT Aug, Sep, Oct, Nov, Dec
+05 16 * 8-12 * /home/observer/palomar/scripts/grab_obsplan.csh
+00 17 * 8-12 * /home/observer/bin/quest_neat_startobs &
+00 07 * 8-12 * /home/observer/palomar/scripts/email_logs.csh
+#
+#
+# Three driftscan runs: 
+#
+# QUEST driftscan Sep 5-7     
+#
+# set camera mode to driftscan at 8 am on first day of driftscan run
+00 08 5 9 * /home/observer/palomar/scripts/set_camera_mode driftscan
+#
+00 16 5-7 9 * /home/observer/restart QUEST
+00 19 5-7 9 * /home/observer/bin/startobs &
+00 07 6-8 9 * /home/observer/bin/get_radec_corrections
+#
+# set camera mode back to stare at 8 am the morning after the last night of the run
+00 09 8 9 * /home/observer/palomar/scripts/set_camera_mode stare
+#
+# QUEST driftscan Oct 7-10    
+#
+# set camera mode to driftscan at 8 am on first day of driftscan run
+00 08 7 10 * /home/observer/palomar/scripts/set_camera_mode driftscan
+#
+00 16 7-10 10 * /home/observer/restart QUEST
+31 18 7-10 10 * /home/observer/bin/startobs &
+00 07 8-11 10 * /home/observer/bin/get_radec_corrections
+#
+# set camera mode back to stare at 8 am the morning after the last night of the run
+00 09 11 10 * /home/observer/palomar/scripts/set_camera_mode stare
+#
+#
+# QUEST driftscan Nov 11-13   
+#
+# set camera mode to driftscan at 8 am on first day of driftscan run
+00 08 11 11 * /home/observer/palomar/scripts/set_camera_mode driftscan
+#
+00 16 11-13 11 * /home/observer/restart QUEST
+54 16 11-13 11 * /home/observer/bin/startobs &
+00 07 12-14 11 * /home/observer/bin/get_radec_corrections
+#
+# set camera mode back to stare at 8 am the morning after the last night of the run
+00 09 14 11 * /home/observer/palomar/scripts/set_camera_mode stare
+#

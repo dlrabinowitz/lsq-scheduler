@@ -1,0 +1,8 @@
+scheduler
+
+program to read sequence of fields for NEO/TNO/Sne survey
+and efficiently schedule them. Socket commands send to
+telescope controller and neatsrv controller.
+
+DLR 2007 Mar 5
+

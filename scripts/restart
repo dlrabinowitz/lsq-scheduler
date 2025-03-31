@@ -1,0 +1,178 @@
+#!/bin/tcsh
+#
+# script for restarting neatsrv.pl on quest16 and ccp on quest7
+# direct output to RESTART_LOG = /home/observer/restart.log
+#
+# syntax: restart [QUEST]
+#
+# "restart QUEST" restarts ccp, but not neatsrv.pl
+#
+# "restart NEAT" or "restart" restarts ccp and neatsrv.pl
+# unless "dontstart" file exists, in which case only ccp is restarted.
+#
+unalias rm
+if ( $#argv > 1 ) then
+   echo "syntax: restart [QUEST/NEAT/QUESTNEAT]"
+   exit
+endif
+#
+set RESTART_LOG = "/home/observer/restart.log"
+#
+date -u >>& $RESTART_LOG
+#
+# echo "updating filter log: >> $RESTART_LOG
+update_filter_log
+tail -n 1 $FILTERLOG >> $RESTART_LOG
+#
+# copy and existing questmgr script to ~guest
+echo "executing copy_script" >>& $RESTART_LOG
+copy_script
+#
+# first kill any running session of neatsrv
+#
+echo "currently running neatsrv processes:" >>& $RESTART_LOG
+ps -aef | grep neatsrv >>& $RESTART_LOG
+#
+slay neatsrv >>& $RESTART_LOG
+#
+echo "remaining neatsrv processes after killing:" >> $RESTART_LOG
+ps -aef | grep neatsrv >>& $RESTART_LOG
+#
+# then kill any running sessions of read_camera, write_fits, and camctl
+slay read_camera >>& $RESTART_LOG
+slay write_fits >>& $RESTART_LOG
+slay camctl >>& $RESTART_LOG
+#
+# check netstat on quest7 before restarting ccp
+rsh -l quest quest7 netstat -p >> $RESTART_LOG
+#
+#
+# Don't restart fingmgr. FInger control sometimes doesn't
+# restart ... DLR 2005 Feb 9
+#
+if ( 0 ) then
+  # restart fingmgr on quest7
+  echo "restarting fingmgr" >>& $RESTART_LOG
+  rsh -l quest quest7 start_fmgr >>& $RESTART_LOG
+  echo "waiting 20 seconds" >>& $RESTART_LOG
+  sleep 20
+endif
+echo "WHERE 1"  | fingctl quest7 >>& $RESTART_LOG
+echo "WHERE 2"  | fingctl quest7 >>& $RESTART_LOG
+echo "WHERE 3"  | fingctl quest7 >>& $RESTART_LOG
+echo "WHERE 4"  | fingctl quest7 >>& $RESTART_LOG
+# next restart ccp on quest7
+#
+echo "sending shutdown command to ccp" >>& $RESTART_LOG
+echo "SHUTDOWN" | camctl quest7 >>& $RESTART_LOG
+#
+echo "restarting ccp" >>& $RESTART_LOG
+if ( $FAKE_OBS ) then
+  rsh -l quest quest7 start_ops.fake >>& $RESTART_LOG
+else
+  rsh -l quest quest7 start_ops >>& $RESTART_LOG
+endif
+echo "waiting 20 seconds" >>& $RESTART_LOG
+sleep 20
+echo "STATUS"  | camctl quest7 >>& $RESTART_LOG
+echo "resetting camera" >>& $RESTART_LOG
+echo "RESET" | camctl quest7 >>& $RESTART_LOG
+#
+#
+# if $#argv=0 or $argv[1]="NEAT" and "dontstart" file does not exist,
+# then restart neatsrv.pl and pipe output to $NEATLOGDIR  
+#
+set neat_restart = 0
+#
+if ( $#argv == 0 ) then
+ set neat_restart = 1
+else if ( $#argv == 1 ) then
+ if ( $argv[1] == "NEAT" || $argv[1] == "neat" ) then
+   set neat_restart = 1
+ else if ( $argv[1] == "OLDNEAT" ) then
+   set neat_restart = 2
+ else if ( $argv[1] == "QUESTNEAT" || $argv[1] == "questneat" ) then
+   set neat_restart = 3
+ endif
+endif
+#
+if ( -e "/home/observer/dontstart") then
+   echo "Dontstart file at /home/observer" >>& $RESTART_LOG
+   set neat_restart=0
+endif
+#
+if ( $neat_restart >= 1 ) then
+
+# Put all fingers at 1250 if not already there
+#
+
+if ( ! $FAKE_OBS  ) then
+  echo "checking finger positions" >>& $RESTART_LOG
+  set f = 1
+  while ( $f <= 4 )
+    set p  = `echo "WHERE $f" | fingctl quest7`
+    echo "finger $f currently at position $p" >>& $RESTART_LOG
+    if ( $p != 1250 ) then
+       echo "moving finger $f to 1250" >>& $RESTART_LOG
+       echo "MOVE $f 1250" | fingctl quest7 >>& $RESTART_LOG
+       set p  = `echo "WHERE $f" | fingctl quest7`
+       echo "finger $f now at position $p" >>& $RESTART_LOG
+    endif
+    @ f = $f + 1
+  end
+endif
+#
+#
+  echo "Restarting neatsrv" >>& $RESTART_LOG
+  set d = `date -u +"%Y%m%d.%H%M%S"`
+  cd /home/observer/palomar/scripts
+  set n = `echo "READ_TEMP 1" | tempctl $TEMPHOST |& grep error | wc -l`
+#  neatsrv.pl >& /neat/obsdata/logs/neatsrv.log.$d &
+  if ( $neat_restart == 1 ) then
+    if ( $n == 1 ) then
+       echo "No Temperature readout. Starting neatsrv_no_temperature.pl" >>& $RESTART_LOG
+       neatsrv_no_temperature.pl >& $NEATLOGDIR/neatsrv.log.$d &
+    else
+       echo "Temperature readout successful. Starting neatsrv.pl" >>& $RESTART_LOG
+       neatsrv.pl >& $NEATLOGDIR/neatsrv.log.$d &
+    endif
+  else if ( $neat_restart == 2 ) then
+    old_disk_neatsrv.pl >& $NEATLOGDIR/neatsrv.log.$d &
+  else if ( $neat_restart == 3 ) then
+    set d1 = `get_ut_date`
+
+    if ( ! -e $QUESTNEATDATADIR/$d1) then
+        mkdir $QUESTNEATDATADIR/$d1
+    endif
+    if ( ! -e $QUESTNEATDATADIR/$d1/logs) then
+        mkdir $QUESTNEATDATADIR/$d1/logs
+    endif
+    set x = `pwd`
+    cd $QUESTNEATDATADIR
+#
+# skip temperature readout - takes too much time
+#    set n = 1
+    if ( $n == 1 ) then
+       echo "No Temperature readout. " >>& $RESTART_LOG
+       ~/palomar/scripts/quest_neatsrv.pl.test $d1 0 >>&  $QUESTNEATDATADIR/$d1/logs/logfile &
+    else
+       echo "Temperature readout ok. " >>& $RESTART_LOG
+       ~/palomar/scripts/quest_neatsrv.pl.test $d1 1 >>&  $QUESTNEATDATADIR/$d1/logs/logfile &
+    endif
+    cd $x
+  endif
+
+#
+# send init to camera through neatsrv
+  echo "Sending init to neatsrv" >>& $RESTART_LOG
+  echo "i" | $PALOMARDIR/scripts/neatclient.pl &
+
+else
+  
+  echo "Skipping restart of neatsrv" >>& $RESTART_LOG
+
+endif
+echo "done with restart" >>& $RESTART_LOG
+date >>& $RESTART_LOG
+#
+
